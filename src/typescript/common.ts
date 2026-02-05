@@ -1,0 +1,5 @@
+export const ERROR_CONFIG = 'error_config'
+export const ERROR_BLOCK_GENERATION = 'error_block_generation'
+export const ERROR_NANO_WORK_GENERATION = 'error_nano_work_generation'
+export const ERROR_NANO_RPC_CONNECTION = 'error_nano_rpc_connection'
+export const ERROR_INSUFFICIENT_NANO_BALANCE = 'error_insufficient_nano_balance'
