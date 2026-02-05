@@ -54,7 +54,7 @@ const exactNanoScheme = new ExactNanoScheme(helper)
 facilitator.register('nano:mainnet', exactNanoScheme)
 ```
 
-💡 Detailed examples of usage can be viewed in the [`/examples/` folder for the x402nano exact scheme](https://github.com/x402nano/exact/src/typescript/examples).
+💡 Detailed examples of usage can be viewed in the [`/examples/` folder for the x402nano exact scheme](https://github.com/x402nano/exact/tree/main/src/typescript/examples).
 
 ## API
 
