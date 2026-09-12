@@ -38,8 +38,7 @@
   },
   "dependencies": {
     "@x402nano/typescript-common": "^0.1.0",
-    "nano-sdk": "^1.0.1",
-    "nanocurrency": "^2.5.0",
+    "nano-sdk": "^1.0.7",
     "zod": "^4.3.2"
   },
   "keywords": [

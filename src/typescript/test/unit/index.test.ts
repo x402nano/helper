@@ -30,33 +30,6 @@ const SAMPLE_NANO_WORK_GENERATION_URL_2 = 'https://sample-nano-work-generation-u
 const ONE_NANO_TO_RAW = '1000000000000000000000000000000'
 
 describe('helper', () => {
-  describe('calculateBalanceAfterSend', () => {
-    it('returns correct balance value (large raw unit amounts)', () => {
-      const result = calculateBalanceAfterSend({
-        currentBalance: '2000000000000000000000000000000',
-        amountToSend: ONE_NANO_TO_RAW,
-      })
-      expect(result).toBe(ONE_NANO_TO_RAW)
-    })
-
-    it('returns correct balance value (small raw unit amounts)', () => {
-      const result = calculateBalanceAfterSend({
-        currentBalance: '50',
-        amountToSend: '30',
-      })
-      expect(result).toBe('20')
-    })
-
-    it('throws an error on insufficient balance', () => {
-      expect(() =>
-        calculateBalanceAfterSend({
-          currentBalance: ONE_NANO_TO_RAW,
-          amountToSend: '2000000000000000000000000000000',
-        }),
-      ).toThrowError(ERROR_INSUFFICIENT_NANO_BALANCE)
-    })
-  })
-
   describe('validateNanoRpcUrl', () => {
     it('should allow a valid URL', () => {
       expect(

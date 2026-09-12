@@ -1,11 +1,17 @@
-import * as N from 'nanocurrency'
+import * as z from "zod"
+import { createSendBlock, StateBlock } from "nano-sdk/blocks"
+import { deriveAccountFromPrivateKey } from "nano-sdk/crypto"
+import {
+  AccountString,
+  HashString,
+  RawAmountString,
+  SubtypeString,
+} from "nano-sdk/types"
 import { Nano } from 'nano-sdk'
-import BigNumber from 'bignumber.js'
 import {
   // Types
   NanoSendBlock,
   GenerateSendBlockParams,
-  CreateBlockParams,
   WorkGenerationHookContext,
   NanoRpcCallParams,
   WorkGenerateParams,
@@ -15,7 +21,6 @@ import {
   ProcessBlockParams,
   ProcessBlockSuccess,
   GetAccountParams,
-  CalculateBalanceAfterSendParams,
   HelperConfig,
   AccountInfoSuccess,
   HelperClass,
@@ -35,7 +40,6 @@ import {
   ERROR_BLOCK_GENERATION,
   ERROR_NANO_WORK_GENERATION,
   ERROR_NANO_RPC_CONNECTION,
-  ERROR_INSUFFICIENT_NANO_BALANCE,
 } from './common'
 
 /**
@@ -57,6 +61,26 @@ const XRB_PREFIX: string = 'xrb_'
  * Current Nano address prefix.
  */
 const NANO_PREFIX: string = 'nano_'
+
+
+/**
+ * Schema for successful block information response from Nano node.
+ */
+const BLOCK_INFO_SUCCESS = z.object({
+  block_account: AccountString(),
+  amount: RawAmountString(),
+  balance: RawAmountString(),
+  height: z.ZodString,
+  local_timestamp: z.ZodString,
+  successor: HashString(),
+  confirmed: z.union([z.literal("true"), z.literal("false")]),
+  contents: StateBlock(),
+  subtype: SubtypeString(),
+})
+/**
+ * Type representing successful block information response from Nano node.
+ */
+type BlockInfoSuccess = z.infer<typeof BLOCK_INFO_SUCCESS>
 
 /**
  * Makes an RPC call to a Nano node.
@@ -158,100 +182,13 @@ async function workGenerate({
 }
 
 /**
- * Creates a Nano send block with proper work and signature.
- *
- * @param config - Helper configuration containing private key of the account to send Nano from
- * @param representative - Account representative address
- * @param balance - New account balance after transaction
- * @param link - Transaction link (destination)
- * @param previous - Previous block hash
- * @param workGenerator - Work generation function
- * @returns Promise resolving to the created send block
- * @throws Error if no work is generated
- */
-async function createBlock({
-  config,
-  representative,
-  balance,
-  link,
-  previous,
-  beforeWorkGenerationHooks = [],
-  afterWorkGenerationHooks = [],
-  workGenerator,
-}: CreateBlockParams): Promise<NanoSendBlock> {
-  const context: WorkGenerationHookContext = {
-    representative,
-    balance,
-    link,
-    previous,
-  }
-
-  // Execute beforeWorkGenerationHooks hooks
-  for (const beforeWorkGenerationHook of beforeWorkGenerationHooks) {
-    await (beforeWorkGenerationHook as BeforeWorkGenerationHook)(context)
-  }
-
-  let work = await workGenerate({
-    config,
-    hash: previous,
-    workGenerator,
-  })
-
-  // Execute afterWorkGenerationHooks hooks
-  for (const afterWorkGenerationHook of afterWorkGenerationHooks) {
-    await (afterWorkGenerationHook as AfterWorkGenerationHook)(Object.assign(context, { work }))
-  }
-
-  if (work) {
-    let { block } = N.createBlock(config[NANO_ACCOUNT_PRIVATE_KEY_PROPERTY], {
-      representative,
-      balance,
-      work,
-      link,
-      previous,
-    })
-
-    if (block?.account.startsWith(XRB_PREFIX)) {
-      block.account = block.account.replace(XRB_PREFIX, NANO_PREFIX)
-    }
-    return block
-  } else {
-    throw new Error(
-      `[${ERROR_NANO_WORK_GENERATION}] No work generated during creation of Nano send block`,
-    )
-  }
-}
-
-/**
  * Derives the account address from the configured private key.
  *
  * @param config - Helper configuration containing private key
  * @returns The derived Nano account address
  */
 function getAccount({ config }: GetAccountParams) {
-  return N.deriveAddress(N.derivePublicKey(config[NANO_ACCOUNT_PRIVATE_KEY_PROPERTY]))
-}
-
-/**
- * Calculates the eventual Nano balance after a send operation.
- *
- * @param currentBalance - The current account balance in raw units
- * @param amountToSend - The amount to send in raw units
- * @returns The resulting balance in raw units after the transaction as a string
- */
-export function calculateBalanceAfterSend({
-  currentBalance,
-  amountToSend,
-}: CalculateBalanceAfterSendParams): string {
-  const bnBalanceAfterSend = new BigNumber(currentBalance).minus(amountToSend)
-
-  if (bnBalanceAfterSend.lt(0)) {
-    throw new Error(
-      `[${ERROR_INSUFFICIENT_NANO_BALANCE}] Insufficient balance to perform Nano send transaction`,
-    )
-  }
-
-  return bnBalanceAfterSend.toFixed()
+  return deriveAccountFromPrivateKey({ privateKey: config[NANO_ACCOUNT_PRIVATE_KEY_PROPERTY] })
 }
 
 /**
@@ -322,6 +259,16 @@ export function validateCustomWorkGenerator(workGenerator: WorkGenerator) {
   }
 }
 
+/**
+ * Ensure that a Nano account has a "nano_" prefix, not the legacy "xrb_" prefix
+ *
+ * @param nanoAccount - The Nano account to check
+ * @returns Nano account with a "nano_" prefix
+ */
+export function ensureNanoPrefix(nanoAccount: AccountString): AccountString {
+  return nanoAccount.replace(XRB_PREFIX, NANO_PREFIX)
+}
+
 // ---------------------------------------------------
 
 /**
@@ -384,12 +331,20 @@ export class Helper implements HelperClass {
     validateNanoAccountPrivateKey(this.config[NANO_ACCOUNT_PRIVATE_KEY_PROPERTY])
     validateNanoWorkGenerationUrl(this.config.NANO_WORK_GENERATION_URL)
 
-    let amountToSend: string = params.amount
     let sourceAccount = getAccount({ config: this.config })
     let sourceAccountInfo = (await this.getAccountInfo({
       account: sourceAccount,
     })) as AccountInfoSuccess
-    let currentBalance: string = sourceAccountInfo.balance
+
+    // Get information about the frontier block
+    let sourceAccountFrontierBlockInfo = (await nanoRpcCall({
+      url: this.config.NANO_RPC_URL,
+      action: 'block_info',
+      params: {
+        hash: sourceAccountInfo.frontier,
+        json_block: "true",
+      },
+    })) as BlockInfoSuccess
 
     if (!sourceAccountInfo.frontier) {
       throw new Error(
@@ -397,23 +352,52 @@ export class Helper implements HelperClass {
       )
     }
 
-    let balanceAfterSend: string = calculateBalanceAfterSend({
-      currentBalance,
-      amountToSend,
-    })
-
-    let block = await createBlock({
-      config: this.config,
+    const context: WorkGenerationHookContext = {
       representative: sourceAccountInfo.representative,
-      balance: balanceAfterSend,
+      balance: sourceAccountInfo.balance,
       link: params.payTo,
       previous: sourceAccountInfo.frontier,
-      beforeWorkGenerationHooks: this.beforeWorkGenerationHooks,
-      afterWorkGenerationHooks: this.afterWorkGenerationHooks,
+    }    
+
+    // Execute beforeWorkGenerationHooks hooks
+    for (const beforeWorkGenerationHook of this.beforeWorkGenerationHooks) {
+      await (beforeWorkGenerationHook as BeforeWorkGenerationHook)(context)
+    }
+
+    let work = await workGenerate({
+      config: this.config,
+      hash: sourceAccountInfo.frontier,
       workGenerator: this.workGenerator,
     })
 
-    return block
+    // Execute afterWorkGenerationHooks hooks
+    for (const afterWorkGenerationHook of this.afterWorkGenerationHooks) {
+      await (afterWorkGenerationHook as AfterWorkGenerationHook)(Object.assign(context, { work }))
+    }
+
+    if (!work) {
+      throw new Error(
+        `[${ERROR_NANO_WORK_GENERATION}] No work generated during creation of Nano send block`,
+      )
+    }
+
+    let block
+    if ("contents" in sourceAccountFrontierBlockInfo) {
+      block = createSendBlock({
+        amount: params.amount,
+        destination: params.payTo,
+        frontierBlock: sourceAccountFrontierBlockInfo.contents,
+        privateKey: this.config[NANO_ACCOUNT_PRIVATE_KEY_PROPERTY],
+        representative: sourceAccountFrontierBlockInfo.contents.representative,
+      })
+    }
+
+    block!.work = work
+
+    block!.account = ensureNanoPrefix(block!.account)
+    block!.link_as_account = ensureNanoPrefix(block!.link_as_account)
+
+    return block!
   }
 
   /**
