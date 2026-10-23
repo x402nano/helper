@@ -40,6 +40,7 @@ import {
   ERROR_BLOCK_GENERATION,
   ERROR_NANO_WORK_GENERATION,
   ERROR_NANO_RPC_CONNECTION,
+  ERROR_INSUFFICIENT_NANO_BALANCE,
 } from './common'
 
 /**
@@ -111,11 +112,12 @@ async function nanoRpcCall({
     })
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`)
     const json = (await res.json()) as NanoRpcCallJsonResponse
-    if (json.error) throw new Error(`[${ERROR_NANO_RPC_CONNECTION}]: ${json.error}`)
+    if (json.error) throw new Error(`${json.error}`)
     return json
   } catch (error) {
+    const detail = error instanceof Error && error.message ? `: ${error.message}` : ''
     throw new Error(
-      `[${isGeneratingWork ? ERROR_NANO_WORK_GENERATION : ERROR_NANO_RPC_CONNECTION}] Could not connect to ${isGeneratingWork ? 'Nano Work Generation URL' : 'Nano RPC URL'}`,
+      `[${isGeneratingWork ? ERROR_NANO_WORK_GENERATION : ERROR_NANO_RPC_CONNECTION}] Could not connect to ${isGeneratingWork ? 'Nano Work Generation URL' : 'Nano RPC URL'}${detail}`,
     )
   } finally {
     clearTimeout(timer)
@@ -331,10 +333,26 @@ export class Helper implements HelperClass {
     validateNanoAccountPrivateKey(this.config[NANO_ACCOUNT_PRIVATE_KEY_PROPERTY])
     validateNanoWorkGenerationUrl(this.config.NANO_WORK_GENERATION_URL)
 
+    if (!params?.amount || !/^\d+$/.test(String(params.amount)) || BigInt(params.amount) <= 0n) {
+      throw new Error(`[${ERROR_BLOCK_GENERATION}] Invalid send amount`)
+    }
+
     let sourceAccount = getAccount({ config: this.config })
     let sourceAccountInfo = (await this.getAccountInfo({
       account: sourceAccount,
     })) as AccountInfoSuccess
+
+    if (!sourceAccountInfo.frontier) {
+      throw new Error(
+        `[${ERROR_BLOCK_GENERATION}] Source account has no frontier (unopened account)`,
+      )
+    }
+
+    if (BigInt(sourceAccountInfo.balance) < BigInt(params.amount)) {
+      throw new Error(
+        `[${ERROR_INSUFFICIENT_NANO_BALANCE}] Insufficient Nano balance to send ${params.amount} raw`,
+      )
+    }
 
     // Get information about the frontier block
     let sourceAccountFrontierBlockInfo = (await nanoRpcCall({
@@ -345,12 +363,6 @@ export class Helper implements HelperClass {
         json_block: "true",
       },
     })) as BlockInfoSuccess
-
-    if (!sourceAccountInfo.frontier) {
-      throw new Error(
-        `[${ERROR_BLOCK_GENERATION}] Source account has no frontier (unopened account)`,
-      )
-    }
 
     const context: WorkGenerationHookContext = {
       representative: sourceAccountInfo.representative,

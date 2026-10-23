@@ -1,7 +1,6 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { WorkGenerator, NANO_ACCOUNT_PRIVATE_KEY_PROPERTY } from '@x402nano/typescript-common'
 import {
-  calculateBalanceAfterSend,
   validateNanoRpcUrl,
   validateNanoWorkGenerationUrl,
   validateNanoAccountPrivateKey,
@@ -140,6 +139,52 @@ describe('helper', () => {
       expect(
         helperWithoutConfig.setNanoAccountPrivateKey(SAMPLE_NANO_ACCOUNT_PRIVATE_KEY_2),
       ).toBeUndefined()
+    })
+  })
+
+  describe('generateSendBlock guards', () => {
+    it('throws ERROR_BLOCK_GENERATION before block_info or PoW when account has no frontier', async () => {
+      const helper = new Helper({
+        [NANO_ACCOUNT_PRIVATE_KEY_PROPERTY]: SAMPLE_NANO_ACCOUNT_PRIVATE_KEY,
+        NANO_RPC_URL: SAMPLE_NANO_RPC_URL,
+        NANO_WORK_GENERATION_URL: SAMPLE_NANO_WORK_GENERATION_URL,
+      })
+      const workSpy = vi.fn().mockResolvedValue('baeb18003600c19c')
+      helper.setCustomWorkGenerator(workSpy)
+      vi.spyOn(helper, 'getAccountInfo').mockResolvedValue({
+        frontier: '',
+        balance: ONE_NANO_TO_RAW,
+      } as any)
+
+      await expect(
+        helper.generateSendBlock({
+          amount: ONE_NANO_TO_RAW,
+          payTo: 'nano_1h56yw7cb3mb1ojkcfsjbryg68r4436suedtbwsoz9jwwd4stgzr744ft7es',
+        }),
+      ).rejects.toThrowError(ERROR_BLOCK_GENERATION)
+      expect(workSpy).not.toHaveBeenCalled()
+    })
+
+    it('throws ERROR_INSUFFICIENT_NANO_BALANCE before PoW when account balance is less than amount', async () => {
+      const helper = new Helper({
+        [NANO_ACCOUNT_PRIVATE_KEY_PROPERTY]: SAMPLE_NANO_ACCOUNT_PRIVATE_KEY,
+        NANO_RPC_URL: SAMPLE_NANO_RPC_URL,
+        NANO_WORK_GENERATION_URL: SAMPLE_NANO_WORK_GENERATION_URL,
+      })
+      const workSpy = vi.fn().mockResolvedValue('baeb18003600c19c')
+      helper.setCustomWorkGenerator(workSpy)
+      vi.spyOn(helper, 'getAccountInfo').mockResolvedValue({
+        frontier: '8AEF920ABA234F23259B018F4AF945E849477A8171C5116FAF45736817D838A4',
+        balance: '100',
+      } as any)
+
+      await expect(
+        helper.generateSendBlock({
+          amount: ONE_NANO_TO_RAW,
+          payTo: 'nano_1h56yw7cb3mb1ojkcfsjbryg68r4436suedtbwsoz9jwwd4stgzr744ft7es',
+        }),
+      ).rejects.toThrowError(ERROR_INSUFFICIENT_NANO_BALANCE)
+      expect(workSpy).not.toHaveBeenCalled()
     })
   })
 })
