@@ -272,12 +272,16 @@ export function ensureNanoPrefix(nanoAccount: AccountString): AccountString {
 // ---------------------------------------------------
 
 /**
+ * @deprecated @x402nano/helper is deprecated and no longer maintained. Please migrate to @x402nano/exact instead. 
+ * Migration guide: https://github.com/x402nano/helper/blob/main/MIGRATION.md 
+ * 
  * Helper class for interacting with the Nano network.
  *
  * Provides utility methods for accessing Nano account information, block creation,
  * and Nano RPC communication required for x402 protocol operations.
  */
 export class Helper implements HelperClass {
+  private static hasWarned = false;
   /**
    * Configuration for the helper instance.
    */
@@ -293,6 +297,12 @@ export class Helper implements HelperClass {
    * @param config - Optional configuration object
    */
   constructor(config?) {
+    if (!Helper.hasWarned) {
+      console.warn(
+        '[@x402nano/helper] DEPRECATION NOTICE: This package is deprecated. Please migrate to @x402nano/exact instead. Migration guide: https://github.com/x402nano/helper/blob/main/MIGRATION.md'
+      );
+      Helper.hasWarned = true;
+    }    
     if (config) {
       this.config = config
       this.config.NANO_WORK_GENERATION_URL = config.NANO_WORK_GENERATION_URL ?? config.NANO_RPC_URL

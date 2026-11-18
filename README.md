@@ -1,3 +1,8 @@
+# ⚠️ Deprecated ⚠️
+This repository is deprecated and no longer maintained. [@x402nano/exact](https://github.com/x402nano/exact) now contains all the functionality of this repository.
+
+**💡 Use the [migration guide](https://github.com/x402nano/helper/blob/main/MIGRATION.md) to update your code for `@x402nano/exact` 💡**
+
 # @x402nano/helper
 
 [![x402](https://img.shields.io/badge/protocol-x402-0066ff?style=flat-square)](https://www.x402.org)

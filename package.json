@@ -18,7 +18,7 @@
     "type": "git",
     "url": "git+https://github.com/x402nano/helper.git"
   },
-  "description": "Helper module for Nano x402 Clients, Resource Servers and Facilitators",
+  "description": "[Deprecated] Helper module for Nano x402 Clients, Resource Servers and Facilitators",
   "devDependencies": {
     "@eslint/js": "^9.24.0",
     "@types/node": "^22.13.4",
